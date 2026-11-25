@@ -5,7 +5,10 @@ const nav = document.querySelector('#site-nav');
 const mobile = matchMedia('(max-width: 760px)');
 const imageDialog = document.querySelector('#image-dialog');
 const imageBox = imageDialog.querySelector('figure');
+const imagePagination = imageDialog.querySelector('.image-pagination');
 let imageTrigger;
+let imageSeries = [];
+let imageIndex = 0;
 let activeProjection;
 
 function setMenu(open) {
@@ -62,7 +65,7 @@ function startProjection(link) {
   frame.focus({preventScroll: true});
 }
 
-function enlarge(link) {
+function showImage(link) {
   const original = link.querySelector('img');
   const label = link.closest('figure').querySelector('figcaption').innerText;
   const image = document.createElement('img');
@@ -70,11 +73,26 @@ function enlarge(link) {
   image.alt = original.alt;
   image.width = original.width;
   image.height = original.height;
-  imageTrigger = link;
   imageDialog.querySelector('#image-title').textContent = label;
   imageBox.replaceChildren(image);
+  imagePagination.hidden = imageSeries.length < 2;
+  imagePagination.querySelector('p').textContent = `${imageIndex + 1} / ${imageSeries.length}`;
+}
+
+function enlarge(link) {
+  const series = link.closest('[data-image-series]');
+  imageSeries = series ? Array.from(series.querySelectorAll('[data-enlarge]')) : [link];
+  imageIndex = imageSeries.indexOf(link);
+  imageTrigger = link;
+  showImage(link);
   imageDialog.showModal();
   imageDialog.querySelector('.close-image').focus();
+}
+
+function stepImage(step) {
+  if (imageSeries.length < 2) return;
+  imageIndex = (imageIndex + step + imageSeries.length) % imageSeries.length;
+  showImage(imageSeries[imageIndex]);
 }
 
 function followLegacyRoute() {
@@ -107,6 +125,10 @@ nav.addEventListener('click', event => {
   if (event.target.closest('a')) setMenu(false);
 });
 document.addEventListener('keydown', event => {
+  if (imageDialog.open && (event.key === 'ArrowLeft' || event.key === 'ArrowRight') && imageSeries.length > 1) {
+    event.preventDefault();
+    stepImage(event.key === 'ArrowLeft' ? -1 : 1);
+  }
   if (event.key === 'Escape' && !imageDialog.open && menu.getAttribute('aria-expanded') === 'true') {
     setMenu(false);
     restoreFocus(menu);
@@ -122,6 +144,11 @@ document.addEventListener('click', event => {
   }
   if (target === imageDialog || target.closest('.close-image')) {
     imageDialog.close();
+    return;
+  }
+  const step = target.closest('[data-image-step]');
+  if (step) {
+    stepImage(Number(step.dataset.imageStep));
     return;
   }
   if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
@@ -140,7 +167,19 @@ imageDialog.addEventListener('close', () => {
   imageBox.replaceChildren();
   restoreFocus(imageTrigger);
   imageTrigger = undefined;
+  imageSeries = [];
 });
+
+if ('IntersectionObserver' in window && matchMedia('(prefers-reduced-motion: no-preference)').matches) {
+  const reveal = new IntersectionObserver(entries => {
+    for (const entry of entries) {
+      if (!entry.isIntersecting) continue;
+      entry.target.classList.add('is-revealed');
+      reveal.unobserve(entry.target);
+    }
+  }, {threshold: .18});
+  document.querySelectorAll('[data-reveal]').forEach(element => reveal.observe(element));
+}
 window.addEventListener('pagehide', () => stopProjection());
 window.addEventListener('hashchange', followLegacyRoute);
 followLegacyRoute();
